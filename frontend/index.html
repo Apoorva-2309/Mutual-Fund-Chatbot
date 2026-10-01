@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MF FAQ Assistant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>MF FAQ Assistant</h1>
+            <p class="subtitle">Facts-only mutual fund information</p>
+        </header>
+
+        <!-- Welcome Message -->
+        <div class="welcome">
+            <p>Hi! I can answer factual questions about HDFC mutual fund schemes. Facts-only. No advice.</p>
+        </div>
+
+        <!-- Example Questions -->
+        <div class="examples">
+            <h3>Try asking:</h3>
+            <div class="example-buttons">
+                <button class="example-btn" onclick="askExample(this)">
+                    What is the expense ratio of HDFC Large Cap Fund?
+                </button>
+                <button class="example-btn" onclick="askExample(this)">
+                    What is the ELSS lock-in period?
+                </button>
+                <button class="example-btn" onclick="askExample(this)">
+                    How do I download a capital-gains statement?
+                </button>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <input
+                type="text"
+                id="questionInput"
+                class="question-input"
+                placeholder="Ask a question..."
+                onkeypress="handleKeyPress(event)"
+            >
+            <button class="send-btn" onclick="askQuestion()">Send</button>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Thinking...</p>
+        </div>
+
+        <!-- Answer Area -->
+        <div id="answerArea" class="answer-area hidden">
+            <div class="answer-header">
+                <h3>Answer</h3>
+            </div>
+            <div id="answerText" class="answer-text"></div>
+            <div id="sourcesSection" class="sources-section">
+                <h4>Sources:</h4>
+                <ul id="sourcesList" class="sources-list"></ul>
+            </div>
+        </div>
+
+        <!-- Error Area -->
+        <div id="errorArea" class="error-area hidden">
+            <p id="errorText"></p>
+        </div>
+
+        <!-- Disclaimer -->
+        <footer class="disclaimer">
+            <p><strong>Facts-only. No investment advice.</strong></p>
+            <p>This assistant provides factual information from official sources only. It does not recommend any scheme or provide investment advice. Please consult a SEBI-registered investment advisor before making investment decisions.</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

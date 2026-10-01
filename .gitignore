@@ -1,0 +1,23 @@
+# Environment variables
+.env
+
+# Vector DB
+data/chroma_db/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Data files
+data/chunks.txt
+data/chunks.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
