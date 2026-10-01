@@ -8,6 +8,41 @@ Run with:
 import streamlit as st
 import requests
 import uuid
+import subprocess
+import sys
+import time
+
+@st.cache_resource
+def start_api_server():
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "backend.main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8000",
+        ]
+    )
+
+    # Give FastAPI time to initialize
+    for _ in range(30):
+        try:
+            response = requests.get(
+                "http://127.0.0.1:8000/health",
+                timeout=2,
+            )
+            if response.status_code == 200:
+                return process
+        except requests.exceptions.RequestException:
+            time.sleep(1)
+
+    return process
+
+
+api_process = start_api_server()
 
 # =============================================================================
 # Config
