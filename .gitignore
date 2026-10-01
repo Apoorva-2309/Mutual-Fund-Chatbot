@@ -2,7 +2,6 @@
 .env
 
 # Vector DB
-data/chroma_db/
 
 # Python
 __pycache__/
