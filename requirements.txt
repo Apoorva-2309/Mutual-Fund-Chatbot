@@ -1,3 +1,4 @@
+streamlit
 # Core
 fastapi==0.104.1
 uvicorn==0.24.0
@@ -14,7 +15,7 @@ beautifulsoup4==4.12.2
 pypdf==3.17.1
 
 # LLM
-groq==0.1.0
+groq==0.1.1
 
 # Utilities
 nltk==3.8.1
