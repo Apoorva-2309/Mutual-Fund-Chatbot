@@ -82,7 +82,7 @@ api_process = start_api_server()
 API_BASE_URL = "http://localhost:8000"
 
 st.set_page_config(
-    page_title="MF FAQ Assistant",
+    page_title="Mutual Fund FAQ Assistant",
     page_icon="📊",
     layout="centered",
 )
