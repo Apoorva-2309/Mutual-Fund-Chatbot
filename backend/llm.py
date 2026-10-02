@@ -2,7 +2,7 @@
 LLM Service for Mutual Fund FAQ Assistant.
 
 Integrates with the Groq API to generate answers from retrieved context.
-Uses llama-3.3-70b-versatile as the primary model and mixtral-8x7b-32768
+Uses openai/gpt-oss-120b as the primary model and openai/gpt-oss-20b
 as fallback.
 """
 
@@ -30,8 +30,8 @@ load_dotenv()
 # =============================================================================
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
-FALLBACK_MODEL = "mixtral-8x7b-32768"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+FALLBACK_MODEL = "openai/gpt-oss-20b"
 MAX_TOKENS = 200
 TEMPERATURE = 0.1
 MAX_RETRIES = 2
@@ -94,7 +94,7 @@ class LLMService:
         for i, chunk in enumerate(context_chunks, 1):
             text = chunk.get("text", "")
             source_url = chunk.get("metadata", {}).get("source_url", "")
-            context_parts.append(f"[Chunk {i}] {text}\n(Source: {source_url})")
+            context_parts.append(f"{text}\n(Source: {source_url})")
 
         context_str = "\n\n".join(context_parts)
 
@@ -103,10 +103,10 @@ class LLMService:
 
 Rules:
 1. Answer in ≤3 sentences.
-2. Include at least one source citation from the context.
+2. Answer the question directly. Do not reproduce or modify the source URL.
 3. If asked for investment advice (buy/sell/portfolio), politely decline and provide this educational link: https://www.amfiindia.com/investor-education
 4. Do NOT compute or compare returns. If asked about returns, link to the official factsheet.
-5. End with: "Last updated from sources: 2026-10-01"
+5. End with the exact current source date provided in the context as "Last updated from sources: YYYY-MM-DD"
 
 Context:
 {context_str}
@@ -118,28 +118,14 @@ Answer:"""
         return prompt
 
     def generate(self, question: str, context_chunks: List[Dict]) -> str:
-        """
-        Generate an answer using the Groq API.
-
-        Args:
-            question: User's question.
-            context_chunks: List of retrieved chunk dictionaries.
-
-        Returns:
-            Generated answer text.
-
-        Raises:
-            Exception: If API call fails after retries.
-        """
         prompt = self.build_prompt(question, context_chunks)
-
-        # Try primary model, then fallback
         models_to_try = [self.default_model, self.fallback_model]
         last_error = None
 
         for model in models_to_try:
             try:
                 logger.info(f"Calling Groq API with model: {model}")
+
                 response = self.client.chat.completions.create(
                     model=model,
                     messages=[
@@ -149,11 +135,29 @@ Answer:"""
                         }
                     ],
                     temperature=TEMPERATURE,
-                    max_tokens=MAX_TOKENS,
+                    max_completion_tokens=500,
+                    include_reasoning=False,
                 )
 
-                answer = response.choices[0].message.content
-                logger.info(f"Generated answer ({len(answer)} chars) with model: {model}")
+                answer = response.choices[0].message.content or ""
+
+                # Normalize common Unicode characters for reliable display
+                answer = answer.replace("\u2011", "-")
+                answer = answer.replace("\u2013", "-")
+                answer = answer.replace("\u2014", "-")
+                answer = answer.replace("\u00a0", " ")
+
+                answer = answer.split("Last updated from sources:")[0].rstrip()
+
+                answer += (
+                    f"\n\nLast updated from sources: "
+                    f"{context_chunks[0].get('metadata', {}).get('last_updated', '')}"
+                )
+
+                logger.info(
+                    f"Generated answer ({len(answer)} chars) with model: {model}"
+                )
+
                 return answer
 
             except Exception as e:
@@ -161,9 +165,7 @@ Answer:"""
                 logger.warning(f"Model {model} failed: {e}")
                 continue
 
-        # All models failed
         raise Exception(f"All Groq models failed. Last error: {last_error}")
-
     def generate_with_retry(
         self, question: str, context_chunks: List[Dict]
     ) -> str:

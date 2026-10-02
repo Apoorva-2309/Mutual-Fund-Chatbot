@@ -85,38 +85,30 @@ class SchemeSection:
 
 def clean_html(soup: BeautifulSoup) -> BeautifulSoup:
     """
-    Remove unnecessary elements from the BeautifulSoup object.
+    Remove only elements that are definitely non-content.
 
-    Removes: script, style, nav, footer, header, iframe, comments,
-    and elements with common ad/tracking classes.
+    Groww pages may place useful mutual-fund information inside
+    containers whose classes contain words such as sidebar, widget,
+    or navigation, so avoid broad class-based deletion.
     """
-    # Remove script and style elements
-    for tag in soup(["script", "style", "nav", "footer", "header", "iframe", "noscript"]):
+
+    # Remove elements that never contain useful page content.
+    for tag in soup([
+        "script",
+        "style",
+        "noscript",
+        "iframe",
+        "svg",
+    ]):
         tag.decompose()
 
-    # Remove HTML comments
-    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+    # Remove HTML comments.
+    for comment in soup.find_all(
+        string=lambda text: isinstance(text, Comment)
+    ):
         comment.extract()
 
-    # Remove elements with common ad/tracking/navigation classes
-    ad_classes = [
-        "ad", "ads", "advertisement", "banner", "popup", "modal",
-        "cookie", "newsletter", "sidebar", "breadcrumb", "pagination",
-        "social", "share", "related", "recommended", "footer", "header",
-        "navbar", "menu", "nav", "toolbar", "widget",
-    ]
-    for cls in ad_classes:
-        for element in soup.find_all(class_=re.compile(cls, re.I)):
-            element.decompose()
-
-    # Remove elements with common ad/tracking IDs
-    ad_ids = ["ad", "ads", "banner", "popup", "modal", "cookie", "newsletter", "sidebar"]
-    for id_val in ad_ids:
-        for element in soup.find_all(id=re.compile(id_val, re.I)):
-            element.decompose()
-
     return soup
-
 
 def clean_text(text: str) -> str:
     """
@@ -135,228 +127,205 @@ def clean_text(text: str) -> str:
 # Section Extractors
 # =============================================================================
 
-def extract_overview(soup: BeautifulSoup) -> Optional[str]:
-    """Extract scheme overview/description."""
-    # Try multiple selectors for overview
-    selectors = [
-        "div.scheme-description",
-        "div.about-scheme",
-        "div.scheme-overview",
-        "div.description",
-        "div[data-testid='scheme-description']",
-        "p.scheme-description",
-        "div.scheme-detail p",
-        "div.scheme-info p",
-    ]
-    for selector in selectors:
-        element = soup.select_one(selector)
-        if element:
-            return clean_text(element.get_text())
+def _get_page_text(soup: BeautifulSoup) -> str:
+    """Return the complete visible page text as normalized text."""
+    return clean_text(soup.get_text(" ", strip=True))
 
-    # Fallback: find paragraphs with substantial text near the top
-    for p in soup.find_all("p"):
-        text = clean_text(p.get_text())
-        if len(text) > 100:  # Substantial paragraph
-            return text
+
+def extract_overview(soup: BeautifulSoup) -> Optional[str]:
+    """Extract the investment objective / scheme overview."""
+
+    text = _get_page_text(soup)
+
+    match = re.search(
+        r"Investment Objective\s+(.*?)(?=\s+Fund benchmark\b)",
+        text,
+        re.I,
+    )
+
+    if match:
+        objective = clean_text(match.group(1))
+        if objective:
+            return f"Overview: {objective}"
 
     return None
 
-
 def extract_expense_ratio(soup: BeautifulSoup) -> Optional[str]:
-    """Extract expense ratio information."""
-    # Look for expense ratio in tables, divs, or specific sections
-    patterns = [
-        r"expense\s*ratio",
-        r"total\s*expense",
-        r"ter\b",
-        r"annual\s*recurring\s*charges",
-    ]
+    """Extract the expense ratio."""
 
-    # Search in tables
-    for table in soup.find_all("table"):
-        text = clean_text(table.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I):
-                return f"Expense Ratio: {text}"
+    text = _get_page_text(soup)
 
-    # Search in divs/spans with relevant text
-    for element in soup.find_all(["div", "span", "p", "td", "li"]):
-        text = clean_text(element.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I) and len(text) < 500:
-                return f"Expense Ratio: {text}"
+    match = re.search(
+        r"Expense ratio\s+(\d+(?:\.\d+)?)%",
+        text,
+        re.I,
+    )
+
+    if match:
+        return f"Expense Ratio: {match.group(1)}%"
 
     return None
 
 
 def extract_exit_load(soup: BeautifulSoup) -> Optional[str]:
-    """Extract exit load structure."""
-    patterns = [
-        r"exit\s*load",
-        r"redemption\s*charge",
-        r"exit\s*charge",
-    ]
+    """Extract the current exit load statement."""
 
-    for table in soup.find_all("table"):
-        text = clean_text(table.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I):
-                return f"Exit Load: {text}"
+    text = _get_page_text(soup)
 
-    for element in soup.find_all(["div", "span", "p", "td", "li"]):
-        text = clean_text(element.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I) and len(text) < 500:
-                return f"Exit Load: {text}"
+    match = re.search(
+        r"Minimum Lumpsum Investment is\s+₹?[\d,]+(?:\.\d+)?\.\s+"
+        r"Exit load of\s+([^;]+)",
+        text,
+        re.I,
+    )
+
+    if match:
+        return f"Exit Load: {clean_text(match.group(1))}"
 
     return None
-
-
 def extract_riskometer(soup: BeautifulSoup) -> Optional[str]:
-    """Extract riskometer level."""
-    patterns = [
-        r"riskometer",
-        r"risk\s*level",
-        r"risk\s*profile",
-        r"investment\s*risk",
-        r"moderate",
-        r"high\s*risk",
-        r"low\s*risk",
-    ]
+    """Extract the fund risk level."""
 
-    for element in soup.find_all(["div", "span", "p", "td", "li", "img"]):
-        text = clean_text(element.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I) and len(text) < 300:
-                return f"Riskometer: {text}"
+    text = _get_page_text(soup)
 
-    # Check for riskometer images with alt text
-    for img in soup.find_all("img"):
-        alt = img.get("alt", "")
-        if re.search(r"risk", alt, re.I):
-            return f"Riskometer: {alt}"
+    match = re.search(
+        r"is rated\s+([^\.]+?)\.\s+Minimum SIP",
+        text,
+        re.I,
+    )
+
+    if match:
+        return f"Riskometer: {clean_text(match.group(1))}"
 
     return None
-
-
 def extract_benchmark(soup: BeautifulSoup) -> Optional[str]:
-    """Extract benchmark information."""
-    patterns = [
-        r"benchmark",
-        r"index",
-        r"nifty",
-        r"s&p",
-        r"bse",
-        r"sensex",
-        r"crISIL",
-    ]
+    """Extract the benchmark index."""
 
-    for table in soup.find_all("table"):
-        text = clean_text(table.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I):
-                return f"Benchmark: {text}"
+    text = _get_page_text(soup)
 
-    for element in soup.find_all(["div", "span", "p", "td", "li"]):
-        text = clean_text(element.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I) and len(text) < 300:
-                return f"Benchmark: {text}"
+    match = re.search(
+        r"Fund benchmark\s+(.*?)(?=\s+Scheme Information Document)",
+        text,
+        re.I,
+    )
+
+    if match:
+        return f"Benchmark: {match.group(1).strip()}"
 
     return None
 
 
 def extract_minimum_sip(soup: BeautifulSoup) -> Optional[str]:
-    """Extract minimum SIP amount."""
-    patterns = [
-        r"minimum\s*sip",
-        r"min\s*sip",
-        r"sip\s*amount",
-        r"minimum\s*investment",
-        r"min\s*investment",
-        r"sip",
-    ]
+    """Extract the minimum SIP amount."""
 
-    for table in soup.find_all("table"):
-        text = clean_text(table.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I):
-                return f"Minimum SIP: {text}"
+    text = _get_page_text(soup)
 
-    for element in soup.find_all(["div", "span", "p", "td", "li"]):
-        text = clean_text(element.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I) and len(text) < 300:
-                return f"Minimum SIP: {text}"
+    match = re.search(
+        r"Min\.\s*for SIP\s+₹?\s*([\d,]+)",
+        text,
+        re.I,
+    )
+
+    if match:
+        return f"Minimum SIP: ₹{match.group(1)}"
+
+    match = re.search(
+        r"Minimum SIP Investment is set to\s+₹?\s*([\d,]+)",
+        text,
+        re.I,
+    )
+
+    if match:
+        return f"Minimum SIP: ₹{match.group(1)}"
 
     return None
 
 
 def extract_lock_in(soup: BeautifulSoup) -> Optional[str]:
-    """Extract lock-in period (relevant for ELSS)."""
-    patterns = [
-        r"lock[\s-]?in",
-        r"lock\s*period",
-        r"elss",
-        r"tax\s*saver",
-        r"3\s*years?",
-        r"three\s*years?",
-    ]
+    """Extract an explicit lock-in period from the page."""
+    text = _get_page_text(soup)
 
-    for element in soup.find_all(["div", "span", "p", "td", "li"]):
-        text = clean_text(element.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I) and len(text) < 300:
-                return f"Lock-in Period: {text}"
+    match = re.search(
+        r"\b(\d+)\s*Y\s+Lock-in\b",
+        text,
+        re.I,
+    )
+
+    if match:
+        years = match.group(1)
+        return f"Lock-in Period: {years} years"
+
+    match = re.search(
+        r"\bLock[- ]?in\s*(?:period)?\s*(?:of)?\s*(\d+)\s*years?\b",
+        text,
+        re.I,
+    )
+
+    if match:
+        years = match.group(1)
+        return f"Lock-in Period: {years} years"
 
     return None
-
-
 def extract_fund_manager(soup: BeautifulSoup) -> Optional[str]:
-    """Extract fund manager details."""
-    patterns = [
-        r"fund\s*manager",
-        r"fund\s*management",
-        r"managed\s*by",
-        r"portfolio\s*manager",
-    ]
+    """Extract the current fund manager."""
 
-    for element in soup.find_all(["div", "span", "p", "td", "li"]):
-        text = clean_text(element.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I) and len(text) < 300:
-                return f"Fund Manager: {text}"
+    text = _get_page_text(soup)
+
+    match = re.search(
+        r"Fund management\s+(?:[A-Z]{1,3}\s+)?"
+        r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){1,2})\s+"
+        r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+        r"\s+\d{4}\s*-\s*Present",
+        text,
+        re.I,
+    )
+
+    if match:
+        return f"Fund Manager: {clean_text(match.group(1))}"
 
     return None
-
-
 def extract_asset_allocation(soup: BeautifulSoup) -> Optional[str]:
-    """Extract asset allocation information."""
-    patterns = [
-        r"asset\s*allocation",
-        r"allocation",
-        r"equity\s*allocation",
-        r"debt\s*allocation",
-        r"portfolio\s*allocation",
-        r"sector\s*allocation",
-        r"top\s*holdings",
-    ]
+    """
+    Extract explicit asset allocation.
 
-    for table in soup.find_all("table"):
-        text = clean_text(table.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I):
-                return f"Asset Allocation: {text}"
+    Do not treat individual stock holdings as asset allocation.
+    """
 
-    for element in soup.find_all(["div", "span", "p", "td", "li"]):
-        text = clean_text(element.get_text())
-        for pattern in patterns:
-            if re.search(pattern, text, re.I) and len(text) < 500:
-                return f"Asset Allocation: {text}"
+    text = _get_page_text(soup)
+
+    match = re.search(
+        r"Asset Allocation\s+(.*?)(?=\s+Holdings\b)",
+        text,
+        re.I,
+    )
+
+    if not match:
+        return None
+
+    allocation_text = clean_text(match.group(1))
+
+    if (
+        not allocation_text
+        or "HDFC" in allocation_text
+        or "Direct Growth" in allocation_text
+    ):
+        return None
+
+    percentages = re.findall(
+        r"(Equity|Debt|Cash|Gold|Commodity|Others)"
+        r"\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*%",
+        allocation_text,
+        re.I,
+    )
+
+    if percentages:
+        allocation = ", ".join(
+            f"{name}: {percentage}%"
+            for name, percentage in percentages
+        )
+        return f"Asset Allocation: {allocation}"
 
     return None
-
-
 # =============================================================================
 # Main Loader Class
 # =============================================================================

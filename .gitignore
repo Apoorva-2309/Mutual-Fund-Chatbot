@@ -1,17 +1,23 @@
 # Environment variables
 .env
 
-# Vector DB
+# Vector database
+data/chroma_db/
+
+# Generated data
+data/chunks.txt
+data/chunks.json
+data/raw_sections.json
+data/page_text.txt
+
+# Temporary inspection/debug files
+inspect_sections.py
 
 # Python
 __pycache__/
 *.pyc
 .venv/
 venv/
-
-# Data files
-data/chunks.txt
-data/chunks.json
 
 # IDE
 .vscode/

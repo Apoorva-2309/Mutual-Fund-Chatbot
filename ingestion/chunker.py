@@ -149,7 +149,7 @@ class MFChunker:
                         "source_url": source_url,
                         "section_title": section_title,
                         "chunk_index": chunk_index,
-                        "text": chunk_text,
+                        "text": f"{scheme_name} — {chunk_text}",
                         "last_updated": self.current_date,
                     }
                     chunks.append(chunk)
@@ -173,7 +173,7 @@ class MFChunker:
                     "source_url": source_url,
                     "section_title": section_title,
                     "chunk_index": chunk_index,
-                    "text": chunk_text,
+                    "text": f"{scheme_name} — {chunk_text}",
                     "last_updated": self.current_date,
                 }
                 chunks.append(chunk)

@@ -12,6 +12,31 @@ import subprocess
 import sys
 import time
 
+from ingestion.embedder import get_chroma_collection
+from ingestion.ingest import run_ingestion_pipeline
+
+def ensure_chroma_data():
+    """Ensure ChromaDB is populated before starting the API."""
+    try:
+        collection = get_chroma_collection()
+        count = collection.count()
+
+        if count == 0:
+            st.info("Initializing knowledge base...")
+            success = run_ingestion_pipeline(force=False)
+
+            if not success:
+                st.error("Failed to initialize the knowledge base.")
+                st.stop()
+
+            count = get_chroma_collection().count()
+
+        print(f"ChromaDB ready with {count} chunks")
+
+    except Exception as e:
+        st.error(f"Failed to initialize ChromaDB: {e}")
+        st.stop()
+
 @st.cache_resource
 def start_api_server():
     process = subprocess.Popen(
@@ -42,8 +67,8 @@ def start_api_server():
     return process
 
 
+ensure_chroma_data()
 api_process = start_api_server()
-
 # =============================================================================
 # Config
 # =============================================================================
@@ -81,7 +106,8 @@ with st.sidebar:
         st.session_state.session_id = str(uuid.uuid4())
         st.rerun()
 
-    st.markdown("---")
+        st.markdown("---")
+
     st.markdown("### Example Questions")
     examples = [
         "What is the expense ratio of HDFC Large Cap Fund?",
@@ -89,14 +115,14 @@ with st.sidebar:
         "What is the minimum SIP for HDFC Small Cap Fund?",
         "What is the benchmark of HDFC Equity Fund?",
     ]
+
     for ex in examples:
         if st.button(ex):
-            st.session_state.messages.append({"role": "user", "content": ex})
+            st.session_state.pending_question = ex
             st.rerun()
 
     st.markdown("---")
     st.markdown("**Facts-only. No investment advice.**")
-
 # =============================================================================
 # Header
 # =============================================================================
@@ -122,7 +148,9 @@ for message in st.session_state.messages:
 # Chat Input
 # =============================================================================
 
-if prompt := st.chat_input("Ask a question..."):
+prompt = st.session_state.pop("pending_question", None) or st.chat_input("Ask a question...")
+
+if prompt:
     # Add user message to history
     st.session_state.messages.append({"role": "user", "content": prompt})
 

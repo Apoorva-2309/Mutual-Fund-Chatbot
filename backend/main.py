@@ -22,8 +22,7 @@ from backend.llm import llm_service
 from backend.formatter import formatter
 from backend.conversation import conversation_store
 from backend.question_rewriter import question_rewriter
-from ingestion.embedder import get_chroma_collection
-
+from ingestion.embedder import get_chroma_collection, ingest_to_chroma
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -192,5 +191,16 @@ async def generic_exception_handler(request, exc):
 
 if __name__ == "__main__":
     import uvicorn
+
+    collection = get_chroma_collection()
+
+    if collection.count() == 0:
+        logger.info("ChromaDB is empty. Running initial ingestion...")
+        ingest_to_chroma()
+    else:
+        logger.info(
+            "ChromaDB already contains %s chunks.",
+            collection.count(),
+        )
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
