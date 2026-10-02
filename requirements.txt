@@ -7,6 +7,7 @@ pydantic==2.5.0
 
 # RAG
 sentence-transformers==6.1.0
+torchvision==0.29.1
 chromadb==0.4.18
 
 # Data Loading
