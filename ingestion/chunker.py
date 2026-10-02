@@ -21,6 +21,11 @@ from collections import defaultdict
 
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
+# Ensure required NLTK tokenizer data is available
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt", quiet=True)
 
 from ingestion.loader import load_all_schemes, save_raw_sections
 
