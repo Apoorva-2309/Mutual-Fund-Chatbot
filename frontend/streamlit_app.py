@@ -1,5 +1,5 @@
 """
-Streamlit Chat UI for MF FAQ Assistant.
+Streamlit Chat UI for Mutual Fund FAQ Assistant.
 
 Run with:
     streamlit run frontend/streamlit_app.py
@@ -102,7 +102,7 @@ if "messages" not in st.session_state:
 # =============================================================================
 
 with st.sidebar:
-    st.title("MF FAQ Assistant")
+    st.title("Mutual Fund FAQ Assistant")
     st.markdown("Facts-only mutual fund information")
     st.markdown("---")
 
@@ -133,7 +133,7 @@ with st.sidebar:
 # Header
 # =============================================================================
 
-st.title("MF FAQ Assistant")
+st.title("Mutual Fund FAQ Assistant")
 st.markdown("Ask factual questions about HDFC mutual fund schemes.")
 
 # =============================================================================
