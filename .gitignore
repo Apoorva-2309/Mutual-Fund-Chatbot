@@ -26,3 +26,10 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+# Gmail OAuth credentials and tokens
+credentials.json
+token.json
+client_secret*.json
+review_workflow/credentials.json
+review_workflow/token.json
+review_workflow/data/action_ledger.json
