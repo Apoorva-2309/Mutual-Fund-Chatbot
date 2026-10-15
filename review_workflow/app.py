@@ -1,17 +1,55 @@
 
 from pathlib import Path
+import textwrap
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
+
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
+DEPLOYMENT_DATA_DIR = BASE_DIR / "deployment_data"
 
-REVIEWS_FILE = DATA_DIR / "groww_reviews.csv"
-CLUSTERED_FILE = DATA_DIR / "clustered_reviews.csv"
-THEMES_FILE = DATA_DIR / "theme_summary.csv"
+
+def resolve_data_file(filename):
+    local_file = DATA_DIR / filename
+    if local_file.exists():
+        return local_file
+    return DEPLOYMENT_DATA_DIR / filename
+
+
+REVIEWS_FILE = resolve_data_file("groww_reviews.csv")
+CLUSTERED_FILE = resolve_data_file("clustered_reviews.csv")
+THEMES_FILE = resolve_data_file("theme_summary.csv")
 PULSE_FILE = BASE_DIR / "weekly_product_pulse.md"
 FEE_FILE = BASE_DIR / "fee_explainer.md"
+
+def format_pulse_for_email(report: str) -> str:
+    formatted_lines = []
+
+    for line in report.splitlines():
+        if "Source: " in line and "Review ID:" in line:
+            quote_part, source_part = line.split("Source:", 1)
+            quote_part = textwrap.fill(
+                quote_part.rstrip(),
+                width=85,
+                subsequent_indent="  ",
+            )
+
+            source_url, review_id = source_part.split(
+                "| Review ID:", 1
+            )
+
+            formatted_lines.append(quote_part)
+            formatted_lines.append("  Source: " + source_url.strip())
+            formatted_lines.append("  Review ID: " + review_id.strip())
+        elif len(line) > 85 and not line.startswith("http"):
+            formatted_lines.append(textwrap.fill(line, width=85))
+        else:
+            formatted_lines.append(line)
+
+    return "\n".join(formatted_lines)
 
 st.set_page_config(
     page_title="Groww Review Intelligence",
@@ -43,18 +81,24 @@ if reviews.empty:
     )
     st.stop()
 
+
 st.sidebar.header("Navigation")
-page = st.sidebar.radio(
-    "Choose a section",
-    [
-        "Overview",
-        "Review Explorer",
-        "Theme Analysis",
-        "Product Pulse",
-        "Fee Explainer",
-        "Approval Workflow",
-    ],
-)
+
+pages = [
+    "Overview",
+    "Review Explorer",
+    "Theme Analysis",
+    "Product Pulse",
+    "Fee Explainer",
+]
+
+if (
+    (BASE_DIR / "credentials.json").exists()
+    and (BASE_DIR / "token.json").exists()
+):
+    pages.append("Approval Workflow")
+
+page = st.sidebar.radio("Choose a section", pages)
 
 st.sidebar.caption(
     "Source: public Google Play reviews. "
@@ -96,7 +140,23 @@ if page == "Overview":
         .rename_axis("Rating")
         .rename("Reviews")
     )
-    st.bar_chart(rating_counts)
+
+    rating_chart = (
+        alt.Chart(rating_counts.reset_index())
+        .mark_bar()
+        .encode(
+            x=alt.X("Rating:O", title="Rating"),
+            y=alt.Y(
+                "Reviews:Q",
+                title="Number of reviews",
+                scale=alt.Scale(domainMin=0),
+            ),
+            tooltip=["Rating", "Reviews"],
+        )
+    )
+
+    st.altair_chart(rating_chart, use_container_width=True)
+
 
     st.subheader("Dataset preview")
     st.dataframe(reviews.head(10), use_container_width=True)
@@ -200,12 +260,15 @@ elif page == "Product Pulse":
     else:
         st.warning("Product pulse not found. Run build_product_pulse.py.")
 
+
+
 elif page == "Fee Explainer":
     st.header("Understanding Groww Trading Charges")
 
     if FEE_FILE.exists():
         fee_text = FEE_FILE.read_text(encoding="utf-8")
         st.markdown(fee_text)
+
         st.download_button(
             "Download fee explainer",
             data=fee_text,
@@ -216,11 +279,12 @@ elif page == "Fee Explainer":
         st.error("fee_explainer.md was not found.")
 
 
+
 elif page == "Approval Workflow":
     import hashlib
     import json
 
-    from review_workflow.gmail_drafts import create_gmail_draft
+    from gmail_drafts import create_gmail_draft
 
     st.header("Human Approval Workflow")
     st.caption(
@@ -255,10 +319,10 @@ elif page == "Approval Workflow":
                 "Hello,\n\n"
                 "Please find below the latest product pulse based on "
                 "public Google Play reviews of Groww.\n\n"
-                + pulse_text
+                + format_pulse_for_email(pulse_text)
                 + "\n\nRegards,\nReview Intelligence"
             ),
-            height=400,
+            height=550,
         )
 
         approved = st.checkbox(

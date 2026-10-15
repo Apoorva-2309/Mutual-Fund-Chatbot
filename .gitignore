@@ -33,3 +33,7 @@ client_secret*.json
 review_workflow/credentials.json
 review_workflow/token.json
 review_workflow/data/action_ledger.json
+# Milestone 2 local review datasets and generated outputs
+review_workflow/data/
+# Local backups created during collector safety testing
+review_workflow/backup_before_collector_changes/
