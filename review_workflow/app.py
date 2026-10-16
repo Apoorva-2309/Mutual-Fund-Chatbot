@@ -90,13 +90,8 @@ pages = [
     "Theme Analysis",
     "Product Pulse",
     "Fee Explainer",
+    "Approval Workflow",
 ]
-
-if (
-    (BASE_DIR / "credentials.json").exists()
-    and (BASE_DIR / "token.json").exists()
-):
-    pages.append("Approval Workflow")
 
 page = st.sidebar.radio("Choose a section", pages)
 
@@ -284,13 +279,27 @@ elif page == "Approval Workflow":
     import hashlib
     import json
 
-    from gmail_drafts import create_gmail_draft
+    from gmail_drafts import (
+        GmailConfigError,
+        create_gmail_draft,
+        gmail_is_configured,
+    )
 
     st.header("Human Approval Workflow")
     st.caption(
         "Review the proposed email, edit it if needed, and explicitly "
         "approve creation of a Gmail draft. This workflow does not send emails."
     )
+
+    if not gmail_is_configured():
+        st.warning(
+            "Gmail is not configured in this environment. "
+            "Locally, run `python review_workflow/gmail_auth.py` after "
+            "saving credentials.json next to this app. On Streamlit Cloud, "
+            "add a `[gmail]` secret with `client_id`, `client_secret`, "
+            "and `refresh_token`. This page creates drafts only; it never "
+            "sends email."
+        )
 
     if PULSE_FILE.exists():
         pulse_text = PULSE_FILE.read_text(encoding="utf-8")
@@ -346,6 +355,11 @@ elif page == "Approval Workflow":
             st.error("Enter a valid recipient email address.")
         elif not subject.strip() or not body.strip():
             st.error("The subject and body cannot be empty.")
+        elif not gmail_is_configured():
+            st.error(
+                "Gmail is not configured, so a draft was not created. "
+                "Follow the setup instructions on this page first."
+            )
         else:
             ledger_file = DATA_DIR / "action_ledger.json"
             draft_key = hashlib.sha256(
@@ -358,106 +372,122 @@ elif page == "Approval Workflow":
                 ).encode("utf-8")
             ).hexdigest()
 
-
-            try:
-                if ledger_file.exists():
-                    ledger = json.loads(
-                        ledger_file.read_text(encoding="utf-8")
-                    )
-                else:
-                    ledger = {}
-
-                existing = ledger.get(draft_key)
-
-                if existing:
-                    if (
-                        existing.get("status") == "draft_created"
-                        and existing.get("draft_id")
-                    ):
-                        st.info(
-                            "A draft was already recorded for this exact "
-                            "recipient, subject, and body."
-                        )
-                        st.write("Previously recorded draft ID:")
-                        st.code(existing["draft_id"])
-                    else:
-                        st.warning(
-                            "A previous attempt has an unresolved status. "
-                            "Check Gmail Drafts before taking further action. "
-                            "This app will not automatically retry it."
-                        )
-                        st.write("Recorded status:")
-                        st.code(existing.get("status", "unknown"))
-
-                else:
-                    from datetime import datetime, timezone
-
-                    DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-                    started_at = datetime.now(timezone.utc).isoformat()
-                    ledger[draft_key] = {
-                        "status": "creation_started",
-                        "started_at": started_at,
-                        "draft_id": None,
-                    }
-
-                    # Persist intent before contacting Gmail.
-                    ledger_file.write_text(
-                        json.dumps(ledger, indent=2),
-                        encoding="utf-8",
-                    )
-
-                    try:
-                        with st.spinner("Creating your Gmail draft..."):
-                            draft_id = create_gmail_draft(
-                                recipient.strip(),
-                                subject.strip(),
-                                body,
-                            )
-                    except Exception as exc:
-                        ledger[draft_key]["status"] = "outcome_unknown"
-                        ledger[draft_key]["updated_at"] = (
-                            datetime.now(timezone.utc).isoformat()
-                        )
-                        ledger[draft_key]["error_type"] = type(exc).__name__
-
-                        ledger_file.write_text(
-                            json.dumps(ledger, indent=2),
-                            encoding="utf-8",
-                        )
-
-                        st.error(
-                            "The outcome could not be confirmed. "
-                            "Check Gmail Drafts before retrying."
-                        )
-                        st.caption(
-                            f"Technical details: {type(exc).__name__}: {exc}"
-                        )
-                    else:
-                        ledger[draft_key]["status"] = "draft_created"
-                        ledger[draft_key]["draft_id"] = draft_id
-                        ledger[draft_key]["updated_at"] = (
-                            datetime.now(timezone.utc).isoformat()
-                        )
-
-                        ledger_file.write_text(
-                            json.dumps(ledger, indent=2),
-                            encoding="utf-8",
-                        )
-
-                        st.success("Gmail draft created successfully.")
-                        st.write("Draft ID:")
-                        st.code(draft_id)
-                        st.info(
-                            "Open Gmail → Drafts to review it. "
-                            "The application has not sent the email."
-                        )
-
-            except Exception as exc:
-                st.error(
-                    "The action ledger could not be read or updated. "
-                    "Check Gmail Drafts and the ledger before retrying."
+            if st.session_state.get("_gmail_draft_key") == draft_key:
+                st.info(
+                    "A draft for this exact recipient, subject, and body "
+                    "was already created in this session."
                 )
+                previous_id = st.session_state.get("_gmail_draft_id")
+                if previous_id:
+                    st.write("Draft ID:")
+                    st.code(previous_id)
+            else:
+                try:
+                    if ledger_file.exists():
+                        ledger = json.loads(
+                            ledger_file.read_text(encoding="utf-8")
+                        )
+                    else:
+                        ledger = {}
+
+                    existing = ledger.get(draft_key)
+
+                    if existing:
+                        if (
+                            existing.get("status") == "draft_created"
+                            and existing.get("draft_id")
+                        ):
+                            st.info(
+                                "A draft was already recorded for this exact "
+                                "recipient, subject, and body."
+                            )
+                            st.write("Previously recorded draft ID:")
+                            st.code(existing["draft_id"])
+                        else:
+                            st.warning(
+                                "A previous attempt has an unresolved status. "
+                                "Check Gmail Drafts before taking further action. "
+                                "This app will not automatically retry it."
+                            )
+                            st.write("Recorded status:")
+                            st.code(existing.get("status", "unknown"))
+
+                    else:
+                        from datetime import datetime, timezone
+
+                        DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+                        started_at = datetime.now(timezone.utc).isoformat()
+                        ledger[draft_key] = {
+                            "status": "creation_started",
+                            "started_at": started_at,
+                            "draft_id": None,
+                        }
+
+                        # Persist intent before contacting Gmail.
+                        ledger_file.write_text(
+                            json.dumps(ledger, indent=2),
+                            encoding="utf-8",
+                        )
+
+                        try:
+                            with st.spinner("Creating your Gmail draft..."):
+                                draft_id = create_gmail_draft(
+                                    recipient.strip(),
+                                    subject.strip(),
+                                    body,
+                                )
+                        except Exception as exc:
+                            ledger[draft_key]["status"] = "outcome_unknown"
+                            ledger[draft_key]["updated_at"] = (
+                                datetime.now(timezone.utc).isoformat()
+                            )
+                            ledger[draft_key]["error_type"] = type(exc).__name__
+
+                            ledger_file.write_text(
+                                json.dumps(ledger, indent=2),
+                                encoding="utf-8",
+                            )
+
+                            st.error(
+                                "The outcome could not be confirmed. "
+                                "Check Gmail Drafts before retrying."
+                            )
+                            if isinstance(exc, GmailConfigError):
+                                st.caption(str(exc))
+                            else:
+                                st.caption(
+                                    "Technical details: "
+                                    f"{type(exc).__name__}"
+                                )
+                        else:
+                            ledger[draft_key]["status"] = "draft_created"
+                            ledger[draft_key]["draft_id"] = draft_id
+                            ledger[draft_key]["updated_at"] = (
+                                datetime.now(timezone.utc).isoformat()
+                            )
+
+                            ledger_file.write_text(
+                                json.dumps(ledger, indent=2),
+                                encoding="utf-8",
+                            )
+
+                            st.session_state["_gmail_draft_key"] = draft_key
+                            st.session_state["_gmail_draft_id"] = draft_id
+
+                            st.success("Gmail draft created successfully.")
+                            st.write("Draft ID:")
+                            st.code(draft_id)
+                            st.info(
+                                "Open Gmail → Drafts to review it. "
+                                "The application has not sent the email."
+                            )
+
+                except Exception:
+                    st.error(
+                        "The action ledger could not be read or updated. "
+                        "Check Gmail Drafts and the ledger before retrying."
+                    )
 
 st.caption(
     "Prototype status: local Streamlit app. "
